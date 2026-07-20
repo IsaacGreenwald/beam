@@ -7,7 +7,17 @@ and rock_type get added when the steps that use them arrive.
 
 from __future__ import annotations
 
+from enum import Enum
+
 from pydantic import BaseModel, Field
+
+
+class Canopy(str, Enum):
+    """How much vegetation shades the face. STUB for now (see below)."""
+
+    open = "open"
+    dappled = "dappled"
+    heavy = "heavy"
 
 
 class Face(BaseModel):
@@ -33,6 +43,21 @@ class Face(BaseModel):
         le=180,
         description="tilt of the surface from horizontal: 90=vertical, >90=overhang, <90=slab",
     )
+
+    # Skyline occlusion. A source-agnostic table of (azimuth, elevation) samples:
+    # in each compass direction, the sun is blocked below this elevation angle.
+    # Empty = open sky. HOW this gets filled (hand-entered, DEM raytrace, or a
+    # LiDAR point cloud later) lives in crag.horizon -- the engine never knows.
+    horizon: tuple[tuple[float, float], ...] = Field(
+        default=(),
+        description="(azimuth_deg, horizon_elevation_deg) samples; empty = open sky",
+    )
+
+    # STUB: reserved seam, not yet used by the engine. Trees are semi-transparent
+    # and seasonal, so they are NOT modeled as horizon geometry -- they will become
+    # a beam-attenuation factor driven by this enum (open~1.0, dappled~0.5, heavy~0.2),
+    # optionally parameterized later from LiDAR canopy density. See BACKLOG.md.
+    canopy: Canopy = Canopy.open
 
     model_config = {"frozen": True}  # a Face is an immutable description
 

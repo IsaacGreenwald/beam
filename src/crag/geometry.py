@@ -33,6 +33,21 @@ def _unit_vectors(elevation_deg: np.ndarray, azimuth_deg: np.ndarray) -> np.ndar
     )
 
 
+def horizon_elevation(face: Face, azimuth_deg: np.ndarray) -> np.ndarray:
+    """Interpolated skyline elevation (deg) in each given azimuth direction.
+
+    Empty horizon -> 0 everywhere (open sky). Wraps around 360 via np.interp's
+    `period`, so a sample at 350 deg and one at 10 deg blend across North correctly.
+    """
+    az_query = np.asarray(azimuth_deg, dtype=float) % 360.0
+    if not face.horizon:
+        return np.zeros_like(az_query)
+    az = np.array([p[0] for p in face.horizon], dtype=float)
+    el = np.array([p[1] for p in face.horizon], dtype=float)
+    order = np.argsort(az)
+    return np.interp(az_query, az[order], el[order], period=360.0)
+
+
 def sun_position(face: Face, times: pd.DatetimeIndex) -> pd.DataFrame:
     """Sun elevation and azimuth over time for this face's location.
 
@@ -60,20 +75,28 @@ def beam_factor(face: Face, times: pd.DatetimeIndex) -> pd.Series:
       * cos(angle of incidence) otherwise -- Lambert's cosine projection.
 
     Multiply this by DNI (direct-normal irradiance) to get W/m^2 on the face.
-    NOTE: no terrain/skyline occlusion yet -- that is Step 2.
+
+    Three gates decide whether direct sun reaches the face:
+      1. above the true horizon  (sun elevation > 0)
+      2. above the skyline       (sun elevation > terrain in that direction)
+      3. in front of the face    (cos_aoi > 0, i.e. not self-shaded)
+    Where all three hold, the value is cos_aoi (Lambert projection); else 0.
     """
     sun = sun_position(face, times)
+    sun_el = sun["elevation"].to_numpy()
+    sun_az = sun["azimuth"].to_numpy()
 
     # The two direction vectors: the outward face normal, and the sun.
     normal = _unit_vectors(
         np.array([face.normal_elevation]), np.array([face.aspect])
     )  # (3, 1)
-    sun_vec = _unit_vectors(sun["elevation"].to_numpy(), sun["azimuth"].to_numpy())  # (3, N)
+    sun_vec = _unit_vectors(sun_el, sun_az)  # (3, N)
 
     # Angle of incidence: dot product of the two unit vectors.
     cos_aoi = (normal * sun_vec).sum(axis=0)  # (N,)
 
-    lit = (cos_aoi > 0) & (sun["elevation"].to_numpy() > 0)
+    above_skyline = sun_el > horizon_elevation(face, sun_az)
+    lit = (cos_aoi > 0) & (sun_el > 0) & above_skyline
     factor = np.where(lit, cos_aoi, 0.0)
 
     return pd.Series(factor, index=times, name="beam_factor")
