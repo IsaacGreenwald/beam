@@ -1,0 +1,35 @@
+[project]
+name = "crag-conditions"
+version = "0.0.1"
+description = "Before-you-go forecaster for rock-face conditions (temperature, condensation, sun)."
+requires-python = ">=3.10"
+dependencies = [
+    "pvlib>=0.11",
+    "numpy>=1.24",
+    "pydantic>=2.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "hypothesis>=6.0",
+    "ruff>=0.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/crag"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
