@@ -108,3 +108,15 @@ def test_rock_temp_lags_air_temp():
     air_peak = 48 + np.argmax(air[day3])
     rock_peak = 48 + np.argmax(rock[day3])
     assert rock_peak > air_peak  # rock peaks after air
+
+
+def test_clear_night_rock_dips_below_air():
+    # no sun, rock starts at air temp; clear sky radiates it below air (dawn dip)
+    params = ThermalParams(2.0e5, 0.6)
+    clear, bf = _weather(12, temp_air=10.0, cloud=0.0, wind=1.0)
+    cloudy, _ = _weather(12, temp_air=10.0, cloud=100.0, wind=1.0)
+    rock_clear = integrate(clear, bf, 0.5, params, initial_temp=10.0)
+    rock_cloudy = integrate(cloudy, bf, 0.5, params, initial_temp=10.0)
+
+    assert rock_clear.min() < 10.0  # radiative loss pulls rock below air
+    assert rock_clear.min() < rock_cloudy.min()  # clear night colder than overcast
