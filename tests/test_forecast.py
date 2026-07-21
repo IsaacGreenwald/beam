@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from crag.face import Face
-from crag.forecast import forecast, forecast_model
+from crag.forecast import band, forecast, forecast_model
 from crag.geometry import sky_view_factor
 from crag.thermal import ThermalParams
 
@@ -47,3 +47,13 @@ def test_forecast_runs_per_model():
     assert set(results) == {"ecmwf", "gfs"}
     # more direct sun -> hotter rock
     assert results["gfs"]["rock_temp"].max() > results["ecmwf"]["rock_temp"].max()
+
+
+def test_band_bounds_and_alignment():
+    face = Face(id="S", lat=40, lon=-105, aspect=180, dip=90)
+    tables = {"ecmwf": _weather(dni=600.0), "gfs": _weather(dni=900.0)}
+    b = band(forecast(face, tables, PARAMS))
+    assert list(b.columns) == ["lo", "median", "hi"]
+    assert (b["lo"] <= b["median"]).all()
+    assert (b["median"] <= b["hi"]).all()
+    assert not b.isna().any().any()  # aligned on shared timestamps

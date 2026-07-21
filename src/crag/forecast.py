@@ -31,3 +31,15 @@ def forecast(
 ) -> dict[str, pd.DataFrame]:
     """{model: weather} -> {model: forecast}. The spread across models is the band."""
     return {m: forecast_model(face, w, params) for m, w in weather_tables.items()}
+
+
+def band(results: dict[str, pd.DataFrame], column: str = "rock_temp") -> pd.DataFrame:
+    """Across-model lo/median/hi per timestep: ATMOSPHERIC uncertainty only.
+
+    This is model disagreement, distinct from calibration/held-out error; the two
+    must never be merged into a single band.
+    """
+    frame = pd.DataFrame({m: df[column] for m, df in results.items()}).dropna()
+    return pd.DataFrame(
+        {"lo": frame.min(axis=1), "median": frame.median(axis=1), "hi": frame.max(axis=1)}
+    )

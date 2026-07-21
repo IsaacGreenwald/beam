@@ -120,3 +120,12 @@ def test_clear_night_rock_dips_below_air():
 
     assert rock_clear.min() < 10.0  # radiative loss pulls rock below air
     assert rock_clear.min() < rock_cloudy.min()  # clear night colder than overcast
+
+
+def test_integrator_stable_at_low_mass_high_wind():
+    # the corner the calibrator can wander into: tiny thermal mass + strong wind
+    w, bf = _weather(24, temp_air=15.0, wind=25.0, cloud=0.0)
+    w = w.assign(dni=800.0, diffuse=150.0)
+    rock = integrate(w, bf, sky_view=0.5, params=ThermalParams(1.0e4, 0.6))
+    assert np.all(np.isfinite(rock.to_numpy()))  # no NaN/oscillation blowup
+    assert rock.max() < 200.0  # stays in a sane physical range

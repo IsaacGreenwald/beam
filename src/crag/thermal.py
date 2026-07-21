@@ -65,6 +65,14 @@ def net_flux(
     return solar + convection + longwave
 
 
+def _required_substeps(thermal_mass: float, max_wind: float, hour_seconds: float, floor: int) -> int:
+    """Sub-steps keeping forward-Euler well inside its stability limit for any params."""
+    k_max = (5.7 + 3.8 * max_wind) + 8.0  # convective(max wind) + radiative upper bound
+    stable_dt = 0.5 * thermal_mass / k_max  # target sub_dt with margin below the CFL limit
+    needed = int(np.ceil(hour_seconds / stable_dt)) if stable_dt > 0 else floor
+    return int(min(max(floor, needed), 2000))
+
+
 def integrate(
     weather: pd.DataFrame,
     beam_factor: pd.Series,
@@ -77,26 +85,39 @@ def integrate(
     """Step the energy balance forward -> hourly rock surface temperature (deg C).
 
     weather has columns dni, diffuse, temp_air, wind, cloud on a uniform hourly index;
-    beam_factor is aligned to it. Starts at air temperature unless initial_temp given.
+    beam_factor is aligned to it. Forcing is interpolated across sub-steps; sub-step
+    count auto-scales up from `substeps` to stay numerically stable for any thermal_mass.
+    Starts at air temperature unless initial_temp given.
     """
-    dt = (weather.index[1] - weather.index[0]).total_seconds() / substeps
-    bf = beam_factor.reindex(weather.index).to_numpy()
+    idx = weather.index
+    hour_seconds = (idx[1] - idx[0]).total_seconds()
+    bf = beam_factor.reindex(idx).to_numpy()
     dni = weather["dni"].to_numpy()
     diffuse = weather["diffuse"].to_numpy()
     temp_air = weather["temp_air"].to_numpy()
     wind = weather["wind"].to_numpy()
     cloud = weather["cloud"].to_numpy()
 
-    rock = np.empty(len(weather))
+    substeps = _required_substeps(params.thermal_mass, float(np.nanmax(wind)), hour_seconds, substeps)
+    sub_dt = hour_seconds / substeps
+
+    rock = np.empty(len(idx))
     t = temp_air[0] if initial_temp is None else initial_temp
     rock[0] = t
-    for i in range(len(weather) - 1):
-        for _ in range(substeps):
+    for i in range(len(idx) - 1):
+        for s in range(substeps):
+            f = (s + 0.5) / substeps  # interpolate forcing to the sub-step midpoint
             flux = net_flux(
-                t, dni=dni[i], diffuse=diffuse[i], temp_air=temp_air[i],
-                wind=wind[i], cloud=cloud[i], beam_factor=bf[i],
-                sky_view=sky_view, params=params,
+                t,
+                dni=dni[i] + f * (dni[i + 1] - dni[i]),
+                diffuse=diffuse[i] + f * (diffuse[i + 1] - diffuse[i]),
+                temp_air=temp_air[i] + f * (temp_air[i + 1] - temp_air[i]),
+                wind=wind[i] + f * (wind[i + 1] - wind[i]),
+                cloud=cloud[i] + f * (cloud[i + 1] - cloud[i]),
+                beam_factor=bf[i] + f * (bf[i + 1] - bf[i]),
+                sky_view=sky_view,
+                params=params,
             )
-            t += flux * dt / params.thermal_mass
+            t += flux * sub_dt / params.thermal_mass
         rock[i + 1] = t
-    return pd.Series(rock, index=weather.index, name="rock_temp")
+    return pd.Series(rock, index=idx, name="rock_temp")

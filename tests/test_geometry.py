@@ -119,6 +119,18 @@ def test_high_skyline_blocks_all_low_sun():
     assert beam_factor(face, times).to_numpy().max() == 0.0
 
 
+# --- sun_position rejects naive (tz-unaware) timestamps ---
+def test_sun_position_requires_tz_aware():
+    import pytest
+
+    from crag.geometry import sun_position
+
+    face = Face(id="tz", lat=LAT, lon=LON, aspect=180, dip=90)
+    naive = pd.date_range("2026-07-20", periods=3, freq="h")  # no tz
+    with pytest.raises(ValueError):
+        sun_position(face, naive)
+
+
 # --- horizon_elevation interpolates and wraps around North ---
 def test_horizon_interpolation_and_wraparound():
     face = Face(

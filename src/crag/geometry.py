@@ -59,6 +59,8 @@ def sun_position(face: Face, times: pd.DatetimeIndex) -> pd.DataFrame:
     Thin wrapper over pvlib. `times` must be timezone-aware. Returns a DataFrame
     with 'elevation' (deg above horizon) and 'azimuth' (deg from North, clockwise).
     """
+    if times.tz is None:
+        raise ValueError("times must be timezone-aware (pvlib silently assumes UTC otherwise)")
     solpos = pvlib.solarposition.get_solarposition(
         times, face.lat, face.lon, altitude=face.altitude
     )
