@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import requests
 
@@ -22,6 +23,21 @@ FIELDS = {
     "wind_speed_10m": "wind",               # m/s
     "cloud_cover": "cloud",                 # %
 }
+
+
+_MAGNUS_B = 17.625
+_MAGNUS_C = 243.04  # deg C
+
+
+def dew_point(temp_c, rh_pct):
+    """Dew point (deg C) from temperature and relative humidity, via Magnus."""
+    gamma = np.log(rh_pct / 100.0) + _MAGNUS_B * temp_c / (_MAGNUS_C + temp_c)
+    return _MAGNUS_C * gamma / (_MAGNUS_B - gamma)
+
+
+def with_dew_point(df: pd.DataFrame) -> pd.DataFrame:
+    """Weather table + a 'dew_point' column derived from temp_air and rh."""
+    return df.assign(dew_point=dew_point(df["temp_air"], df["rh"]))
 
 
 def parse_hourly(hourly: dict) -> pd.DataFrame:
