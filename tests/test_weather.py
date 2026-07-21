@@ -71,3 +71,12 @@ def test_fetch_models_aggregates_per_model(monkeypatch):
     assert set(out) == {"ecmwf", "gfs"}
     assert calls == ["ecmwf", "gfs"]
     assert isinstance(out["ecmwf"], pd.DataFrame)
+
+
+def test_session_is_cached_singleton():
+    import requests_cache
+
+    s1 = weather._get_session()
+    s2 = weather._get_session()
+    assert s1 is s2
+    assert isinstance(s1, requests_cache.CachedSession)

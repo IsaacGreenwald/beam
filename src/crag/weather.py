@@ -4,9 +4,25 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import requests
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+CACHE_PATH = ".cache/open_meteo"
+CACHE_EXPIRE_SECONDS = 3600
+
+_session = None
+
+
+def _get_session():
+    global _session
+    if _session is None:
+        import requests_cache
+
+        _session = requests_cache.CachedSession(
+            cache_name=CACHE_PATH,
+            backend="sqlite",
+            expire_after=CACHE_EXPIRE_SECONDS,
+        )
+    return _session
 
 MODELS = {
     "ecmwf": "ecmwf_ifs025",
@@ -66,7 +82,7 @@ def fetch_model(
         "start_date": start_date,
         "end_date": end_date,
     }
-    resp = requests.get(OPEN_METEO_URL, params=params, timeout=30)
+    resp = _get_session().get(OPEN_METEO_URL, params=params, timeout=30)
     resp.raise_for_status()
     return parse_hourly(resp.json()["hourly"])
 
