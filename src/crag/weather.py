@@ -69,3 +69,15 @@ def fetch_model(
     resp = requests.get(OPEN_METEO_URL, params=params, timeout=30)
     resp.raise_for_status()
     return parse_hourly(resp.json()["hourly"])
+
+
+def fetch_models(
+    lat: float,
+    lon: float,
+    start_date: str,
+    end_date: str,
+    models: list[str] | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Fetch several models; return {model_name: hourly table}. Defaults to all."""
+    models = models or list(MODELS)
+    return {m: fetch_model(lat, lon, start_date, end_date, model=m) for m in models}

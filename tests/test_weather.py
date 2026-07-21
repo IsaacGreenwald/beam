@@ -1,7 +1,8 @@
 import pandas as pd
 import pytest
 
-from crag.weather import FIELDS, dew_point, parse_hourly, with_dew_point
+from crag import weather
+from crag.weather import FIELDS, dew_point, fetch_models, parse_hourly, with_dew_point
 
 
 def test_parse_hourly_shapes_and_utc():
@@ -55,3 +56,18 @@ def test_with_dew_point_adds_column():
     assert "dew_point" in df.columns
     assert df["dew_point"].iloc[0] == pytest.approx(9.3, abs=0.2)
     assert df["dew_point"].iloc[1] == pytest.approx(25.0, abs=0.2)
+
+
+def test_fetch_models_aggregates_per_model(monkeypatch):
+    calls = []
+
+    def fake_fetch_model(lat, lon, start_date, end_date, model="ecmwf"):
+        calls.append(model)
+        return pd.DataFrame({"dni": [float(len(model))]})
+
+    monkeypatch.setattr(weather, "fetch_model", fake_fetch_model)
+    out = fetch_models(40.0, -105.0, "2026-07-20", "2026-07-20", models=["ecmwf", "gfs"])
+
+    assert set(out) == {"ecmwf", "gfs"}
+    assert calls == ["ecmwf", "gfs"]
+    assert isinstance(out["ecmwf"], pd.DataFrame)
