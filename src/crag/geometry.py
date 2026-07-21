@@ -33,6 +33,11 @@ def _unit_vectors(elevation_deg: np.ndarray, azimuth_deg: np.ndarray) -> np.ndar
     )
 
 
+def sky_view_factor(face: Face) -> float:
+    """Fraction of the sky hemisphere the face sees (isotropic): (1+cos(dip))/2."""
+    return (1.0 + np.cos(np.radians(face.dip))) / 2.0
+
+
 def horizon_elevation(face: Face, azimuth_deg: np.ndarray) -> np.ndarray:
     """Interpolated skyline elevation (deg) in each given azimuth direction.
 
