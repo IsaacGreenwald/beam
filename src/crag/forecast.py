@@ -10,10 +10,21 @@ from crag.thermal import ThermalParams, integrate
 from crag.weather import with_dew_point
 
 
-def forecast_model(face: Face, weather: pd.DataFrame, params: ThermalParams) -> pd.DataFrame:
-    """One model's weather -> temp_air, rock_temp, dew_point, margin."""
+def forecast_model(
+    face: Face,
+    weather: pd.DataFrame,
+    params: ThermalParams,
+    deep_temp: pd.Series | None = None,
+) -> pd.DataFrame:
+    """One model's weather -> temp_air, rock_temp, dew_point, margin.
+
+    A forecast window is far shorter than the deep-node trailing mean, so supply
+    deep_temp from climatology or an archive run when the season is not mild.
+    """
     w = with_dew_point(weather)
-    rock = integrate(w, beam_factor(face, w.index), sky_view_factor(face), params)
+    rock = integrate(
+        w, beam_factor(face, w.index), sky_view_factor(face), params, deep_temp=deep_temp
+    )
     return pd.DataFrame(
         {
             "temp_air": w["temp_air"],
@@ -28,9 +39,10 @@ def forecast(
     face: Face,
     weather_tables: dict[str, pd.DataFrame],
     params: ThermalParams,
+    deep_temp: pd.Series | None = None,
 ) -> dict[str, pd.DataFrame]:
     """{model: weather} -> {model: forecast}. The spread across models is the band."""
-    return {m: forecast_model(face, w, params) for m, w in weather_tables.items()}
+    return {m: forecast_model(face, w, params, deep_temp) for m, w in weather_tables.items()}
 
 
 def band(results: dict[str, pd.DataFrame], column: str = "rock_temp") -> pd.DataFrame:

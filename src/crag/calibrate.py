@@ -18,7 +18,8 @@ from crag.geometry import beam_factor, sky_view_factor, sun_position
 from crag.thermal import ThermalParams, integrate
 
 DAYLIGHT_WEIGHT = 3.0
-DEFAULT_BOUNDS = ((1.0e4, 0.1), (5.0e6, 1.0))  # (thermal_mass, absorptivity) lo/hi
+# lo/hi for (thermal_mass, absorptivity, deep_conductance)
+DEFAULT_BOUNDS = ((1.0e4, 0.1, 0.0), (5.0e6, 1.0, 5.0))
 
 
 @dataclass(frozen=True)
@@ -26,17 +27,31 @@ class CalibrationResult:
     params: ThermalParams
     held_out_rmse: float  # daylight-hours RMSE on the held-out window, deg C
     train_rmse: float     # daylight-hours RMSE on the training window, deg C
-    n_train: int
-    n_held_out: int
+    n_train: int          # scored training rows
+    n_held_out: int       # scored held-out rows
+
+
+def warm_season_mask(
+    weather: pd.DataFrame, min_daily_mean: float = 2.0, window_hours: int = 24
+) -> pd.Series:
+    """Hours in above-freezing spells, where unmodelled winter physics is small.
+
+    Filters on a centred running mean so whole diurnal cycles survive rather than
+    only the warm half of each day. Excludes latent heat of freeze-thaw and the
+    deep cold sink from the fit; the integration still runs over the full record.
+    """
+    daily = weather["temp_air"].rolling(window_hours, center=True, min_periods=1).mean()
+    return daily > min_daily_mean
 
 
 def _daylight_mask(face: Face, index: pd.DatetimeIndex) -> np.ndarray:
     return sun_position(face, index)["elevation"].to_numpy() > 0.0
 
 
-def _daylight_rmse(pred: np.ndarray, obs: np.ndarray, is_day: np.ndarray) -> float:
-    err = (pred - obs)[is_day]
-    return float(np.sqrt(np.mean(err**2)))
+def _rmse(pred: np.ndarray, obs: np.ndarray, rows: np.ndarray) -> float:
+    if not rows.any():
+        return float("nan")
+    return float(np.sqrt(np.mean(((pred - obs)[rows]) ** 2)))
 
 
 def calibrate(
@@ -46,9 +61,17 @@ def calibrate(
     *,
     train_frac: float = 0.7,
     initial: ThermalParams = ThermalParams(3.0e5, 0.6),
-    bounds: tuple[tuple[float, float], tuple[float, float]] = DEFAULT_BOUNDS,
+    bounds: tuple[tuple[float, ...], tuple[float, ...]] = DEFAULT_BOUNDS,
+    mask: pd.Series | None = None,
+    fit_deep: bool = False,
+    deep_temp: pd.Series | None = None,
 ) -> CalibrationResult:
-    """Fit (thermal_mass, absorptivity) on the training window; score on held-out."""
+    """Fit thermal params on the training window; score on held-out.
+
+    mask restricts which timesteps are scored (see warm_season_mask) without
+    truncating the integration. fit_deep adds deep_conductance as a third free
+    param -- only identifiable on records where deep temp departs from air temp.
+    """
     obs = observations.dropna()
     weather = weather.loc[obs.index]
     idx = obs.index
@@ -60,28 +83,35 @@ def calibrate(
     is_day = _daylight_mask(face, idx)
     sqrt_w = np.sqrt(np.where(is_day, DAYLIGHT_WEIGHT, 1.0))
 
-    n_train = int(np.floor(len(idx) * train_frac))
-    train, held = slice(0, n_train), slice(n_train, len(idx))
+    scored = np.ones(len(idx), bool) if mask is None else mask.reindex(idx).fillna(False).to_numpy()
+    is_train = np.zeros(len(idx), bool)
+    is_train[: int(np.floor(len(idx) * train_frac))] = True
+    fit_rows, held_rows = scored & is_train, scored & ~is_train
+    if not fit_rows.any():
+        raise ValueError("mask leaves no training rows to fit on")
+
+    n_free = 3 if fit_deep else 2
 
     def predict(x: np.ndarray) -> np.ndarray:
-        return integrate(weather, bf, sky_view, ThermalParams(x[0], x[1])).to_numpy()
+        params = ThermalParams(x[0], x[1], x[2] if fit_deep else initial.deep_conductance)
+        return integrate(weather, bf, sky_view, params, deep_temp=deep_temp).to_numpy()
 
     def residuals(x: np.ndarray) -> np.ndarray:
-        return (sqrt_w * (predict(x) - observed))[train]
+        return (sqrt_w * (predict(x) - observed))[fit_rows]
 
     lo, hi = bounds
-    fit = least_squares(
-        residuals,
-        x0=[initial.thermal_mass, initial.absorptivity],
-        bounds=([lo[0], lo[1]], [hi[0], hi[1]]),
-    )
-    params = ThermalParams(float(fit.x[0]), float(fit.x[1]))
+    x0 = [initial.thermal_mass, initial.absorptivity, initial.deep_conductance][:n_free]
+    fit = least_squares(residuals, x0=x0, bounds=(list(lo[:n_free]), list(hi[:n_free])))
 
     pred = predict(fit.x)
     return CalibrationResult(
-        params=params,
-        held_out_rmse=_daylight_rmse(pred[held], observed[held], is_day[held]),
-        train_rmse=_daylight_rmse(pred[train], observed[train], is_day[train]),
-        n_train=n_train,
-        n_held_out=len(idx) - n_train,
+        params=ThermalParams(
+            float(fit.x[0]),
+            float(fit.x[1]),
+            float(fit.x[2]) if fit_deep else initial.deep_conductance,
+        ),
+        held_out_rmse=_rmse(pred, observed, held_rows & is_day),
+        train_rmse=_rmse(pred, observed, fit_rows & is_day),
+        n_train=int((fit_rows & is_day).sum()),
+        n_held_out=int((held_rows & is_day).sum()),
     )

@@ -1,7 +1,13 @@
 import numpy as np
 import pandas as pd
 
-from crag.thermal import ThermalParams, integrate, net_flux, sky_temperature
+from crag.thermal import (
+    ThermalParams,
+    deep_temperature,
+    integrate,
+    net_flux,
+    sky_temperature,
+)
 
 PARAMS = ThermalParams(thermal_mass=2.0e5, absorptivity=0.6)
 
@@ -120,6 +126,50 @@ def test_clear_night_rock_dips_below_air():
 
     assert rock_clear.min() < 10.0  # radiative loss pulls rock below air
     assert rock_clear.min() < rock_cloudy.min()  # clear night colder than overcast
+
+
+def test_deep_term_pulls_toward_interior_temperature():
+    kwargs = dict(
+        dni=0.0, diffuse=0.0, temp_air=10.0, wind=1.0, cloud=100.0,
+        beam_factor=0.0, sky_view=SKY_VIEW, params=PARAMS,
+    )
+    no_deep = net_flux(10.0, temp_deep=None, **kwargs)
+    cold_interior = net_flux(10.0, temp_deep=-15.0, **kwargs)
+    warm_interior = net_flux(10.0, temp_deep=25.0, **kwargs)
+    assert cold_interior < no_deep < warm_interior
+    # magnitude is the stated conductance x temperature difference
+    assert np.isclose(no_deep - cold_interior, PARAMS.deep_conductance * 25.0)
+
+
+def test_deep_temperature_lags_and_smooths_air():
+    idx = pd.date_range("2026-01-01", periods=240, freq="h", tz="UTC")
+    air = pd.Series(np.where(np.arange(240) < 120, -10.0, 20.0), index=idx)
+    deep = deep_temperature(air, window_hours=120)
+    assert deep.iloc[119] == -10.0                # nothing warm has entered the window yet
+    assert np.isclose(deep.iloc[179], 5.0)        # window half cold, half warm
+    assert deep.iloc[-1] == 20.0                  # cold spell has fully aged out
+    assert np.all(np.diff(deep.to_numpy()) >= 0)  # ramps, never steps
+
+
+def test_cold_interior_holds_winter_rock_below_air():
+    # the winter bias the single-node model missed: deep rock is a persistent sink
+    w, bf = _weather(48, temp_air=0.0, dni=0.0, cloud=100.0, wind=1.0)
+    neutral = pd.Series(np.zeros(len(w)), index=w.index)   # interior at air temp
+    frozen = pd.Series(np.full(len(w), -15.0), index=w.index)
+
+    rock_neutral = integrate(w, bf, 0.5, PARAMS, initial_temp=0.0, deep_temp=neutral)
+    rock_frozen = integrate(w, bf, 0.5, PARAMS, initial_temp=0.0, deep_temp=frozen)
+    assert rock_frozen.iloc[-1] < rock_neutral.iloc[-1]
+    assert rock_frozen.iloc[-1] < 0.0  # held below air temp all day
+
+
+def test_zero_deep_conductance_recovers_single_node():
+    w, bf = _weather(24, temp_air=10.0, cloud=100.0)
+    frozen = pd.Series(np.full(len(w), -30.0), index=w.index)
+    off = ThermalParams(2.0e5, 0.6, deep_conductance=0.0)
+    with_deep = integrate(w, bf, 0.5, off, initial_temp=20.0, deep_temp=frozen)
+    without = integrate(w, bf, 0.5, off, initial_temp=20.0)
+    assert np.allclose(with_deep.to_numpy(), without.to_numpy())
 
 
 def test_integrator_stable_at_low_mass_high_wind():
