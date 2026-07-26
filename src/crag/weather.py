@@ -6,8 +6,11 @@ import numpy as np
 import pandas as pd
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 CACHE_PATH = ".cache/open_meteo"
 CACHE_EXPIRE_SECONDS = 3600
+ARCHIVE_STABLE_DAYS = 14  # past this the archive stops revising -> cache forever
+NEVER_EXPIRE = -1  # requests_cache sentinel
 
 _session = None
 
@@ -85,6 +88,51 @@ def fetch_model(
     resp = _get_session().get(OPEN_METEO_URL, params=params, timeout=30)
     resp.raise_for_status()
     return parse_hourly(resp.json()["hourly"])
+
+
+def _trim_edges(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop leading/trailing rows with missing fields, keeping a contiguous block."""
+    ok = df.notna().all(axis=1).to_numpy()
+    if not ok.any():
+        return df.iloc[:0]
+    return df.iloc[ok.argmax() : len(ok) - ok[::-1].argmax()]
+
+
+def fetch_archive(
+    lat: float,
+    lon: float,
+    start_date: str,
+    end_date: str,
+    drop_future: bool = True,
+) -> pd.DataFrame:
+    """Fetch historical hourly weather (ERA5-backed) for a location, 1940 to today.
+
+    Open-Meteo backfills the recent edge, so requests reaching today return hours
+    that are forecast-backed rather than observed; drop_future cuts at the current
+    hour so spin-up never consumes predicted weather as history.
+    """
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": ",".join(FIELDS),
+        "wind_speed_unit": "ms",
+        "timezone": "GMT",
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+    now = pd.Timestamp.now(tz="UTC")
+    settled = pd.Timestamp(end_date, tz="UTC") < now - pd.Timedelta(days=ARCHIVE_STABLE_DAYS)
+    resp = _get_session().get(
+        ARCHIVE_URL,
+        params=params,
+        timeout=60,
+        expire_after=NEVER_EXPIRE if settled else CACHE_EXPIRE_SECONDS,
+    )
+    resp.raise_for_status()
+    df = parse_hourly(resp.json()["hourly"])
+    if drop_future:
+        df = df[df.index <= now.floor("h")]
+    return _trim_edges(df)
 
 
 def fetch_models(
