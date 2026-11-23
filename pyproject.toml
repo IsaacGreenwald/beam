@@ -2,7 +2,7 @@
 name = "crag-conditions"
 version = "0.0.1"
 description = "Before-you-go forecaster for rock-face conditions (temperature, condensation, sun)."
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "pvlib>=0.11",
     "numpy>=1.24",

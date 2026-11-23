@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from functools import cache
 
 from pydantic import BaseModel, Field
@@ -23,7 +23,7 @@ def timezone_at(lat: float, lon: float) -> str:
     return tz
 
 
-class Canopy(str, Enum):
+class Canopy(StrEnum):
     """Vegetation shading level. Not yet used by the engine (see BACKLOG.md)."""
 
     open = "open"
