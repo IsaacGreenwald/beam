@@ -8,8 +8,24 @@ and rock_type get added when the steps that use them arrive.
 from __future__ import annotations
 
 from enum import Enum
+from functools import cache
 
 from pydantic import BaseModel, Field
+from timezonefinder import TimezoneFinder
+
+
+@cache
+def _tz_finder() -> TimezoneFinder:
+    return TimezoneFinder()
+
+
+@cache
+def timezone_at(lat: float, lon: float) -> str:
+    """IANA time zone name (e.g. 'America/Denver') at a coordinate, looked up offline."""
+    tz = _tz_finder().timezone_at(lat=lat, lng=lon)
+    if tz is None:
+        raise ValueError(f"no time zone found at ({lat}, {lon})")
+    return tz
 
 
 class Canopy(str, Enum):
@@ -70,3 +86,8 @@ class Face(BaseModel):
         Overhang (dip 120) -> -30 (normal points groundward).
         """
         return 90.0 - self.dip
+
+    @property
+    def tz(self) -> str:
+        """The face's local time zone, from its coordinates."""
+        return timezone_at(self.lat, self.lon)

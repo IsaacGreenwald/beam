@@ -98,3 +98,24 @@ def beam_factor(face: Face, times: pd.DatetimeIndex) -> pd.Series:
     factor = np.where(lit, cos_aoi, 0.0)
 
     return pd.Series(factor, index=times, name="beam_factor")
+
+
+def sun_windows(face: Face, date) -> pd.DataFrame:
+    """Minute-resolution spans of direct sun on the face over one local day."""
+    day = pd.Timestamp(date).normalize()
+    start = day.tz_localize(face.tz, nonexistent="shift_forward")
+    end = (day + pd.Timedelta(days=1)).tz_localize(face.tz, nonexistent="shift_forward")
+    times = pd.date_range(start, end, freq="1min", inclusive="left")
+    bf = beam_factor(face, times).to_numpy()
+
+    edges = np.diff(np.concatenate([[0], (bf > 0).astype(int), [0]]))
+    first, after = np.nonzero(edges == 1)[0], np.nonzero(edges == -1)[0]
+    bounds = times.append(pd.DatetimeIndex([end]))
+    return pd.DataFrame(
+        {
+            "start": bounds[first],
+            "end": bounds[after],
+            "duration": bounds[after] - bounds[first],
+            "peak": [bf[a:b].max() for a, b in zip(first, after, strict=True)],
+        }
+    )
