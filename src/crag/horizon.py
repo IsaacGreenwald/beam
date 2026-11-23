@@ -17,14 +17,58 @@ Reserved for later (stubs below, so the seam is real and the home is obvious):
     returns, and derive a canopy-density attenuation layer from the veg returns.
     See BACKLOG.md.
 
-Because these all return the same table shape, the merge is trivial: concatenate
-samples from several sources (DEM skyline + a few hand-entered near-field bumps)
-into one `Face.horizon`.
+Tables from several sources (DEM skyline + a few hand-entered near-field bumps)
+combine with ``merge``, which keeps the tallest skyline in every direction. Never
+concatenate tables directly: one table's taper-to-zero samples would cut into the
+other's terrain.
 """
 
 from __future__ import annotations
 
+from itertools import combinations
+
+import numpy as np
+
 HorizonTable = tuple[tuple[float, float], ...]
+
+
+def elevation_at(table: HorizonTable, azimuth_deg) -> np.ndarray:
+    """Skyline elevation (deg) in each given azimuth, linear between samples.
+
+    Empty table -> 0 everywhere (open sky). Wraps around 360, so samples at 350 and
+    10 deg blend across North.
+    """
+    az_query = np.asarray(azimuth_deg, dtype=float) % 360.0
+    if not table:
+        return np.zeros_like(az_query)
+    az = np.array([p[0] for p in table], dtype=float) % 360.0
+    el = np.array([p[1] for p in table], dtype=float)
+    order = np.argsort(az)
+    return np.interp(az_query, az[order], el[order], period=360.0)
+
+
+def merge(*tables: HorizonTable) -> HorizonTable:
+    """Combine horizon tables into one that is the tallest of them in every direction.
+
+    Exact, not resampled: the upper envelope of piecewise-linear skylines only bends
+    at an input sample or where two skylines cross, so those are the output samples.
+    """
+    tables = tuple(t for t in tables if t)
+    if not tables:
+        return ()
+    az = np.unique(np.concatenate([[p[0] % 360.0 for p in t] for t in tables]))
+    ring = np.append(az, az[0] + 360.0)
+    elev = [elevation_at(t, ring) for t in tables]
+
+    crossings = []
+    for a, b in combinations(elev, 2):
+        d = a - b
+        i = np.nonzero(d[:-1] * d[1:] < 0)[0]
+        crossings.append(ring[i] + d[i] / (d[i] - d[i + 1]) * (ring[i + 1] - ring[i]))
+
+    az = np.unique(np.concatenate([az, *crossings]) % 360.0)
+    top = np.max([elevation_at(t, az) for t in tables], axis=0)
+    return tuple(zip(az.tolist(), top.tolist(), strict=True))
 
 
 def flat_horizon() -> HorizonTable:

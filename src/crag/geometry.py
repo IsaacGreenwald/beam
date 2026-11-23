@@ -14,6 +14,7 @@ import pandas as pd
 import pvlib
 
 from crag.face import Face
+from crag.horizon import elevation_at
 
 
 def _unit_vectors(elevation_deg: np.ndarray, azimuth_deg: np.ndarray) -> np.ndarray:
@@ -39,18 +40,8 @@ def sky_view_factor(face: Face) -> float:
 
 
 def horizon_elevation(face: Face, azimuth_deg: np.ndarray) -> np.ndarray:
-    """Interpolated skyline elevation (deg) in each given azimuth direction.
-
-    Empty horizon -> 0 everywhere (open sky). Wraps around 360 via np.interp's
-    `period`, so a sample at 350 deg and one at 10 deg blend across North correctly.
-    """
-    az_query = np.asarray(azimuth_deg, dtype=float) % 360.0
-    if not face.horizon:
-        return np.zeros_like(az_query)
-    az = np.array([p[0] for p in face.horizon], dtype=float)
-    el = np.array([p[1] for p in face.horizon], dtype=float)
-    order = np.argsort(az)
-    return np.interp(az_query, az[order], el[order], period=360.0)
+    """Interpolated skyline elevation (deg) in each given azimuth direction."""
+    return elevation_at(face.horizon, azimuth_deg)
 
 
 def sun_position(face: Face, times: pd.DatetimeIndex) -> pd.DataFrame:

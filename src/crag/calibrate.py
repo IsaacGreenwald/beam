@@ -19,6 +19,7 @@ from crag.thermal import ThermalParams, integrate
 
 DAYLIGHT_WEIGHT = 3.0
 # lo/hi for (thermal_mass, absorptivity, deep_conductance)
+DEFAULT_INITIAL = ThermalParams(3.0e5, 0.6)
 DEFAULT_BOUNDS = ((1.0e4, 0.1, 0.0), (5.0e6, 1.0, 5.0))
 
 
@@ -60,7 +61,7 @@ def calibrate(
     observations: pd.Series,
     *,
     train_frac: float = 0.7,
-    initial: ThermalParams = ThermalParams(3.0e5, 0.6),
+    initial: ThermalParams = DEFAULT_INITIAL,
     bounds: tuple[tuple[float, ...], tuple[float, ...]] = DEFAULT_BOUNDS,
     mask: pd.Series | None = None,
     fit_deep: bool = False,
