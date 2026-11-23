@@ -1,10 +1,4 @@
-"""Thermal model: hourly surface energy balance -> rock temperature.
-
-Two-node lumped model: a diurnal skin (~0.2 m) coupled to the atmosphere and,
-weakly, to deep rock carrying the seasonal signal. Fittable params are
-thermal_mass and absorptivity; deep_conductance defaults to its physical estimate
-and is only worth fitting on multi-season records (see calibrate.fit_deep).
-"""
+"""Two-node rock energy balance: a diurnal skin coupled to the air and to deep rock."""
 
 from __future__ import annotations
 
@@ -16,6 +10,7 @@ import pandas as pd
 STEFAN_BOLTZMANN = 5.670374419e-8  # W/m^2/K^4
 EMISSIVITY = 0.95
 KELVIN = 273.15
+RADIATIVE_COEFF_MAX = 8.0  # W/(m^2 K), 4*eps*sigma*T^3 near 330 K
 
 # k / seasonal damping depth for granite: 2.5 / 3.4
 DEEP_CONDUCTANCE = 0.7  # W/(m^2 K)
@@ -35,10 +30,7 @@ def convective_coefficient(wind_ms: float) -> float:
 
 
 def sky_temperature(temp_air_c: float, cloud_pct: float) -> float:
-    """Effective radiative sky temperature (deg C).
-
-    Clear sky (Swinbank) is well below air temp; cloud pulls it back toward air.
-    """
+    """Effective sky temperature (deg C): Swinbank clear sky, blended toward air by cloud."""
     t_air_k = temp_air_c + KELVIN
     t_clear_k = 0.0552 * t_air_k**1.5
     c = cloud_pct / 100.0
@@ -47,11 +39,9 @@ def sky_temperature(temp_air_c: float, cloud_pct: float) -> float:
 
 
 def deep_temperature(temp_air: pd.Series, window_hours: int = DEEP_WINDOW_HOURS) -> pd.Series:
-    """Interior rock temperature proxy: trailing mean of air temp.
+    """Deep-rock temperature proxy: trailing mean of air temp.
 
-    A trailing mean of window W lags by ~W/2, matching the ~58 d phase lag of the
-    annual wave at its damping depth. Records shorter than W collapse toward their
-    own mean, the regime where the deep term is not identifiable.
+    A window W lags ~W/2, matching the annual wave's ~58 d lag at damping depth.
     """
     return temp_air.rolling(window_hours, min_periods=1).mean()
 
@@ -69,10 +59,7 @@ def net_flux(
     params: ThermalParams,
     temp_deep: float | None = None,
 ) -> float:
-    """Net energy flux INTO the rock surface, W/m^2 (negative = cooling).
-
-    temp_deep=None drops the deep-conduction term (atmospheric flows in isolation).
-    """
+    """Net flux into the rock surface, W/m^2 (negative = cooling). No temp_deep, no conduction."""
     t_rock_k = rock_temp_c + KELVIN
     t_air_k = temp_air + KELVIN
     t_sky_k = sky_temperature(temp_air, cloud) + KELVIN
@@ -87,6 +74,10 @@ def net_flux(
     return solar + convection + longwave + deep
 
 
+def _lerp(a: float, b: float, frac: float) -> float:
+    return a + frac * (b - a)
+
+
 def _required_substeps(
     thermal_mass: float,
     max_wind: float,
@@ -94,8 +85,8 @@ def _required_substeps(
     hour_seconds: float,
     floor: int,
 ) -> int:
-    """Sub-steps keeping forward-Euler well inside its stability limit for any params."""
-    k_max = (5.7 + 3.8 * max_wind) + 8.0 + deep_conductance  # convective + radiative + deep
+    """Sub-steps per hour that keep forward Euler stable for these params."""
+    k_max = convective_coefficient(max_wind) + RADIATIVE_COEFF_MAX + deep_conductance
     stable_dt = 0.5 * thermal_mass / k_max  # target sub_dt with margin below the CFL limit
     needed = int(np.ceil(hour_seconds / stable_dt)) if stable_dt > 0 else floor
     return int(min(max(floor, needed), 2000))
@@ -111,50 +102,38 @@ def integrate(
     substeps: int = 6,
     deep_temp: pd.Series | None = None,
 ) -> pd.Series:
-    """Step the energy balance forward -> hourly rock surface temperature (deg C).
+    """Forward-Euler energy balance -> hourly rock surface temperature (deg C).
 
-    weather has columns dni, diffuse, temp_air, wind, cloud on a uniform hourly index;
-    beam_factor is aligned to it. Forcing is interpolated across sub-steps; sub-step
-    count auto-scales up from `substeps` to stay numerically stable for any thermal_mass.
-    Starts at air temperature unless initial_temp given. deep_temp overrides the
-    trailing-mean interior proxy (supply climatology for short forecast windows).
+    weather needs dni, diffuse, temp_air, wind, cloud on a uniform hourly index.
+    Starts at air temp unless initial_temp; deep_temp overrides the trailing-mean proxy.
     """
     idx = weather.index
     hour_seconds = (idx[1] - idx[0]).total_seconds()
-    bf = beam_factor.reindex(idx).to_numpy()
-    dni = weather["dni"].to_numpy()
-    diffuse = weather["diffuse"].to_numpy()
-    temp_air = weather["temp_air"].to_numpy()
-    wind = weather["wind"].to_numpy()
-    cloud = weather["cloud"].to_numpy()
-    deep = (
-        deep_temperature(weather["temp_air"]) if deep_temp is None else deep_temp.reindex(idx)
-    ).to_numpy()
+    deep = deep_temperature(weather["temp_air"]) if deep_temp is None else deep_temp.reindex(idx)
+    forcing = {
+        "dni": weather["dni"].to_numpy(),
+        "diffuse": weather["diffuse"].to_numpy(),
+        "temp_air": weather["temp_air"].to_numpy(),
+        "wind": weather["wind"].to_numpy(),
+        "cloud": weather["cloud"].to_numpy(),
+        "beam_factor": beam_factor.reindex(idx).to_numpy(),
+        "temp_deep": deep.to_numpy(),
+    }
 
     substeps = _required_substeps(
-        params.thermal_mass, float(np.nanmax(wind)), params.deep_conductance,
+        params.thermal_mass, float(np.nanmax(forcing["wind"])), params.deep_conductance,
         hour_seconds, substeps,
     )
     sub_dt = hour_seconds / substeps
 
     rock = np.empty(len(idx))
-    t = temp_air[0] if initial_temp is None else initial_temp
+    t = forcing["temp_air"][0] if initial_temp is None else initial_temp
     rock[0] = t
     for i in range(len(idx) - 1):
         for s in range(substeps):
-            f = (s + 0.5) / substeps  # interpolate forcing to the sub-step midpoint
-            flux = net_flux(
-                t,
-                dni=dni[i] + f * (dni[i + 1] - dni[i]),
-                diffuse=diffuse[i] + f * (diffuse[i + 1] - diffuse[i]),
-                temp_air=temp_air[i] + f * (temp_air[i + 1] - temp_air[i]),
-                wind=wind[i] + f * (wind[i + 1] - wind[i]),
-                cloud=cloud[i] + f * (cloud[i + 1] - cloud[i]),
-                beam_factor=bf[i] + f * (bf[i + 1] - bf[i]),
-                sky_view=sky_view,
-                params=params,
-                temp_deep=deep[i] + f * (deep[i + 1] - deep[i]),
-            )
+            midpoint = (s + 0.5) / substeps
+            at_midpoint = {k: _lerp(v[i], v[i + 1], midpoint) for k, v in forcing.items()}
+            flux = net_flux(t, **at_midpoint, sky_view=sky_view, params=params)
             t += flux * sub_dt / params.thermal_mass
         rock[i + 1] = t
     return pd.Series(rock, index=idx, name="rock_temp")

@@ -1,9 +1,4 @@
-"""Calibration: fit the 2 thermal params to observed rock temperature.
-
-Source-agnostic seam: observations are a tz-aware Series of observed rock temp
-(deg C). The fit does not care whether they came from a dataset, reanalysis, or a
-logger. Reports error only on a held-out window the fit never saw.
-"""
+"""Fit thermal params to observed rock temperature; score on a held-out window."""
 
 from __future__ import annotations
 
@@ -35,12 +30,7 @@ class CalibrationResult:
 def warm_season_mask(
     weather: pd.DataFrame, min_daily_mean: float = 2.0, window_hours: int = 24
 ) -> pd.Series:
-    """Hours in above-freezing spells, where unmodelled winter physics is small.
-
-    Filters on a centred running mean so whole diurnal cycles survive rather than
-    only the warm half of each day. Excludes latent heat of freeze-thaw and the
-    deep cold sink from the fit; the integration still runs over the full record.
-    """
+    """Hours whose centred daily mean air temp is above freezing (excludes freeze-thaw)."""
     daily = weather["temp_air"].rolling(window_hours, center=True, min_periods=1).mean()
     return daily > min_daily_mean
 
@@ -67,18 +57,15 @@ def calibrate(
     fit_deep: bool = False,
     deep_temp: pd.Series | None = None,
 ) -> CalibrationResult:
-    """Fit thermal params on the training window; score on held-out.
+    """Fit on the first train_frac of observations; report daylight RMSE on the rest.
 
-    mask restricts which timesteps are scored (see warm_season_mask) without
-    truncating the integration. fit_deep adds deep_conductance as a third free
-    param -- only identifiable on records where deep temp departs from air temp.
+    mask limits scoring, not integration. fit_deep frees deep_conductance.
     """
     obs = observations.dropna()
     weather = weather.loc[obs.index]
     idx = obs.index
     observed = obs.to_numpy()
 
-    # geometry is param-independent -> compute once, reuse every iteration
     bf = beam_factor(face, idx)
     sky_view = sky_view_factor(face)
     is_day = _daylight_mask(face, idx)

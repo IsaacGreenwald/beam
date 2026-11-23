@@ -18,8 +18,7 @@ def forecast_model(
 ) -> pd.DataFrame:
     """One model's weather -> temp_air, rock_temp, dew_point, margin.
 
-    A forecast window is far shorter than the deep-node trailing mean, so supply
-    deep_temp from climatology or an archive run when the season is not mild.
+    Pass deep_temp outside mild seasons: a forecast window is too short for the deep-node proxy.
     """
     w = with_dew_point(weather)
     rock = integrate(
@@ -46,11 +45,7 @@ def forecast(
 
 
 def band(results: dict[str, pd.DataFrame], column: str = "rock_temp") -> pd.DataFrame:
-    """Across-model lo/median/hi per timestep: ATMOSPHERIC uncertainty only.
-
-    This is model disagreement, distinct from calibration/held-out error; the two
-    must never be merged into a single band.
-    """
+    """Across-model lo/median/hi per timestep: atmospheric spread, not fit error."""
     frame = pd.DataFrame({m: df[column] for m, df in results.items()}).dropna()
     return pd.DataFrame(
         {"lo": frame.min(axis=1), "median": frame.median(axis=1), "hi": frame.max(axis=1)}

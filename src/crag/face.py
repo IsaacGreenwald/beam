@@ -1,9 +1,4 @@
-"""The Face: one rock face, the unit of prediction.
-
-A single boulder with problems on opposite sides is *multiple* Faces. For now this
-holds only what the geometry engine needs (location + orientation). Horizon, canopy,
-and rock_type get added when the steps that use them arrive.
-"""
+"""One rock face, the unit of prediction. A boulder climbed on several sides is several Faces."""
 
 from __future__ import annotations
 
@@ -29,7 +24,7 @@ def timezone_at(lat: float, lon: float) -> str:
 
 
 class Canopy(str, Enum):
-    """How much vegetation shades the face. STUB for now (see below)."""
+    """Vegetation shading level. Not yet used by the engine (see BACKLOG.md)."""
 
     open = "open"
     dappled = "dappled"
@@ -37,7 +32,7 @@ class Canopy(str, Enum):
 
 
 class Face(BaseModel):
-    """A rock face, described by where it is and which way it points."""
+    """Where a rock face is and which way it points."""
 
     id: str = Field(..., description="stable slug, e.g. 'hp40-millipede-SW'")
     name: str = ""
@@ -46,7 +41,6 @@ class Face(BaseModel):
     lon: float = Field(..., ge=-180, le=180, description="degrees East")
     altitude: float = Field(0.0, description="metres above sea level")
 
-    # Orientation of the face surface.
     aspect: float = Field(
         ...,
         ge=0,
@@ -60,31 +54,19 @@ class Face(BaseModel):
         description="tilt of the surface from horizontal: 90=vertical, >90=overhang, <90=slab",
     )
 
-    # Skyline occlusion. A source-agnostic table of (azimuth, elevation) samples:
-    # in each compass direction, the sun is blocked below this elevation angle.
-    # Empty = open sky. HOW this gets filled (hand-entered, DEM raytrace, or a
-    # LiDAR point cloud later) lives in crag.horizon -- the engine never knows.
     horizon: tuple[tuple[float, float], ...] = Field(
         default=(),
-        description="(azimuth_deg, horizon_elevation_deg) samples; empty = open sky",
+        description="(azimuth_deg, elevation_deg) skyline samples, built with crag.horizon; "
+        "empty = open sky",
     )
 
-    # STUB: reserved seam, not yet used by the engine. Trees are semi-transparent
-    # and seasonal, so they are NOT modeled as horizon geometry -- they will become
-    # a beam-attenuation factor driven by this enum (open~1.0, dappled~0.5, heavy~0.2),
-    # optionally parameterized later from LiDAR canopy density. See BACKLOG.md.
     canopy: Canopy = Canopy.open
 
-    model_config = {"frozen": True}  # a Face is an immutable description
+    model_config = {"frozen": True}
 
     @property
     def normal_elevation(self) -> float:
-        """Elevation angle (deg above horizontal) of the outward face normal.
-
-        Vertical wall (dip 90) -> 0 (normal is horizontal).
-        Slab (dip 60, leaning back) -> +30 (normal points skyward).
-        Overhang (dip 120) -> -30 (normal points groundward).
-        """
+        """Elevation (deg) of the outward normal: 0 vertical, + slab, - overhang."""
         return 90.0 - self.dip
 
     @property

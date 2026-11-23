@@ -105,11 +105,9 @@ def fetch_archive(
     end_date: str,
     drop_future: bool = True,
 ) -> pd.DataFrame:
-    """Fetch historical hourly weather (ERA5-backed) for a location, 1940 to today.
+    """ERA5-backed hourly history for a location, 1940 to today.
 
-    Open-Meteo backfills the recent edge, so requests reaching today return hours
-    that are forecast-backed rather than observed; drop_future cuts at the current
-    hour so spin-up never consumes predicted weather as history.
+    drop_future cuts at the current hour: Open-Meteo fills the recent edge with forecasts.
     """
     params = {
         "latitude": lat,

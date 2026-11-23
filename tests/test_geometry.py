@@ -1,10 +1,4 @@
-"""Tests for the orientation-only geometry engine (Step 1).
-
-Two flavours:
-  * SANITY checks -- physical facts that must hold regardless of any fitting.
-    These turn the abstract dot product into "yes, a north face is dark at noon."
-  * PROPERTY checks -- invariants that must hold for ANY face/time (hypothesis).
-"""
+"""beam_factor: physical sanity checks and hypothesis invariants."""
 
 from __future__ import annotations
 
@@ -35,7 +29,6 @@ def _noon_value(face: Face, date: str) -> float:
     return float(bf.iloc[noon_idx])
 
 
-# --- SANITY: south vertical face, winter noon beats summer noon ---
 def test_south_face_winter_noon_beats_summer():
     """Low winter sun hits a south vertical face more squarely than high summer sun."""
     south = Face(id="s-vert", lat=LAT, lon=LON, aspect=180, dip=90)
@@ -44,7 +37,6 @@ def test_south_face_winter_noon_beats_summer():
     assert winter > summer, f"winter {winter:.3f} should exceed summer {summer:.3f}"
 
 
-# --- SANITY: north face is dark at midsummer noon, but catches early/late sun ---
 def test_north_face_dark_at_summer_noon_lit_at_edges():
     north = Face(id="n-vert", lat=LAT, lon=LON, aspect=0, dip=90)
     times = _day("2026-06-21")
@@ -57,7 +49,6 @@ def test_north_face_dark_at_summer_noon_lit_at_edges():
     assert bf.max() > 0.0, "north face should catch direct sun at the day's edges in midsummer"
 
 
-# --- SANITY: night is always zero ---
 def test_no_sun_at_night():
     face = Face(id="any", lat=LAT, lon=LON, aspect=180, dip=90)
     # 2 a.m. local, mid-winter -- definitively dark
@@ -65,7 +56,6 @@ def test_no_sun_at_night():
     assert beam_factor(face, times).iloc[0] == 0.0
 
 
-# --- PROPERTY: beam_factor always in [0, 1], for any face and any hour ---
 @settings(max_examples=50, deadline=None)
 @given(
     aspect=st.floats(min_value=0, max_value=360),
@@ -83,7 +73,6 @@ def test_beam_factor_bounded(aspect, dip, hour, month):
     assert np.isfinite(val)
 
 
-# --- OCCLUSION: an empty horizon must reproduce Step 1 exactly ---
 def test_empty_horizon_matches_orientation_only():
     east = Face(id="e-open", lat=LAT, lon=LON, aspect=90, dip=90)
     east_blocked = east.model_copy(update={"horizon": ()})  # explicitly open
@@ -93,7 +82,6 @@ def test_empty_horizon_matches_orientation_only():
     )
 
 
-# --- OCCLUSION: a terrain block can only REMOVE sun, never add it ---
 def test_ridge_only_removes_sun_and_removes_some():
     open_face = Face(id="e-open", lat=LAT, lon=LON, aspect=90, dip=90)
     # a tall ridge (40 deg) spanning the eastern sky where the morning sun lives
@@ -110,7 +98,6 @@ def test_ridge_only_removes_sun_and_removes_some():
     assert wall_bf.sum() < open_bf.sum()
 
 
-# --- OCCLUSION: a full high skyline blocks all low sun ---
 def test_high_skyline_blocks_all_low_sun():
     # a 60 deg wall all the way around: only sun above 60 deg elevation gets through
     wall_all = tuple((az, 60.0) for az in range(0, 360, 30))
@@ -119,7 +106,6 @@ def test_high_skyline_blocks_all_low_sun():
     assert beam_factor(face, times).to_numpy().max() == 0.0
 
 
-# --- sun_position rejects naive (tz-unaware) timestamps ---
 def test_sun_position_requires_tz_aware():
     import pytest
 
@@ -131,7 +117,6 @@ def test_sun_position_requires_tz_aware():
         sun_position(face, naive)
 
 
-# --- horizon_elevation interpolates and wraps around North ---
 def test_horizon_interpolation_and_wraparound():
     face = Face(
         id="wrap", lat=LAT, lon=LON, aspect=180, dip=90,
