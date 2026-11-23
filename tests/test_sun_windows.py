@@ -60,9 +60,7 @@ def test_narrow_skyline_bump_splits_the_day():
 def test_windows_cover_exactly_the_lit_minutes():
     face = _face(135, horizon=ridge(150, 35, 20))
     w = sun_windows(face, "2026-06-21")
-    times = pd.date_range(
-        pd.Timestamp("2026-06-21", tz=face.tz), periods=24 * 60, freq="1min"
-    )
+    times = pd.date_range(pd.Timestamp("2026-06-21", tz=face.tz), periods=24 * 60, freq="1min")
     lit_minutes = int((beam_factor(face, times) > 0).sum())
     assert w["duration"].sum() == lit_minutes * MINUTE
     assert (w["peak"] > 0).all() and (w["peak"] <= 1).all()

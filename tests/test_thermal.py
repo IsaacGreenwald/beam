@@ -37,12 +37,26 @@ def test_sky_is_colder_than_air_when_clear():
 
 def test_sun_adds_energy():
     day = net_flux(
-        20.0, dni=800.0, diffuse=120.0, temp_air=20.0, wind=1.0, cloud=0.0,
-        beam_factor=0.9, sky_view=SKY_VIEW, params=PARAMS,
+        20.0,
+        dni=800.0,
+        diffuse=120.0,
+        temp_air=20.0,
+        wind=1.0,
+        cloud=0.0,
+        beam_factor=0.9,
+        sky_view=SKY_VIEW,
+        params=PARAMS,
     )
     shade = net_flux(
-        20.0, dni=800.0, diffuse=120.0, temp_air=20.0, wind=1.0, cloud=0.0,
-        beam_factor=0.0, sky_view=SKY_VIEW, params=PARAMS,
+        20.0,
+        dni=800.0,
+        diffuse=120.0,
+        temp_air=20.0,
+        wind=1.0,
+        cloud=0.0,
+        beam_factor=0.0,
+        sky_view=SKY_VIEW,
+        params=PARAMS,
     )
     assert day > shade
 
@@ -130,8 +144,14 @@ def test_clear_night_rock_dips_below_air():
 
 def test_deep_term_pulls_toward_interior_temperature():
     kwargs = dict(
-        dni=0.0, diffuse=0.0, temp_air=10.0, wind=1.0, cloud=100.0,
-        beam_factor=0.0, sky_view=SKY_VIEW, params=PARAMS,
+        dni=0.0,
+        diffuse=0.0,
+        temp_air=10.0,
+        wind=1.0,
+        cloud=100.0,
+        beam_factor=0.0,
+        sky_view=SKY_VIEW,
+        params=PARAMS,
     )
     no_deep = net_flux(10.0, temp_deep=None, **kwargs)
     cold_interior = net_flux(10.0, temp_deep=-15.0, **kwargs)
@@ -145,16 +165,16 @@ def test_deep_temperature_lags_and_smooths_air():
     idx = pd.date_range("2026-01-01", periods=240, freq="h", tz="UTC")
     air = pd.Series(np.where(np.arange(240) < 120, -10.0, 20.0), index=idx)
     deep = deep_temperature(air, window_hours=120)
-    assert deep.iloc[119] == -10.0                # nothing warm has entered the window yet
-    assert np.isclose(deep.iloc[179], 5.0)        # window half cold, half warm
-    assert deep.iloc[-1] == 20.0                  # cold spell has fully aged out
+    assert deep.iloc[119] == -10.0  # nothing warm has entered the window yet
+    assert np.isclose(deep.iloc[179], 5.0)  # window half cold, half warm
+    assert deep.iloc[-1] == 20.0  # cold spell has fully aged out
     assert np.all(np.diff(deep.to_numpy()) >= 0)  # ramps, never steps
 
 
 def test_cold_interior_holds_winter_rock_below_air():
     # the winter bias the single-node model missed: deep rock is a persistent sink
     w, bf = _weather(48, temp_air=0.0, dni=0.0, cloud=100.0, wind=1.0)
-    neutral = pd.Series(np.zeros(len(w)), index=w.index)   # interior at air temp
+    neutral = pd.Series(np.zeros(len(w)), index=w.index)  # interior at air temp
     frozen = pd.Series(np.full(len(w), -15.0), index=w.index)
 
     rock_neutral = integrate(w, bf, 0.5, PARAMS, initial_temp=0.0, deep_temp=neutral)

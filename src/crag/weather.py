@@ -27,6 +27,7 @@ def _get_session():
         )
     return _session
 
+
 MODELS = {
     "ecmwf": "ecmwf_ifs025",
     "gfs": "gfs_seamless",
@@ -35,12 +36,12 @@ MODELS = {
 
 # Open-Meteo field -> our column name.
 FIELDS = {
-    "direct_normal_irradiance": "dni",      # W/m^2
-    "diffuse_radiation": "diffuse",         # W/m^2
-    "temperature_2m": "temp_air",           # deg C
-    "relative_humidity_2m": "rh",           # %
-    "wind_speed_10m": "wind",               # m/s
-    "cloud_cover": "cloud",                 # %
+    "direct_normal_irradiance": "dni",  # W/m^2
+    "diffuse_radiation": "diffuse",  # W/m^2
+    "temperature_2m": "temp_air",  # deg C
+    "relative_humidity_2m": "rh",  # %
+    "wind_speed_10m": "wind",  # m/s
+    "cloud_cover": "cloud",  # %
 }
 
 

@@ -18,7 +18,7 @@ def _unit_vectors(elevation_deg: np.ndarray, azimuth_deg: np.ndarray) -> np.ndar
         [
             np.cos(el) * np.sin(az),  # East
             np.cos(el) * np.cos(az),  # North
-            np.sin(el),               # Up
+            np.sin(el),  # Up
         ]
     )
 
@@ -58,9 +58,7 @@ def beam_factor(face: Face, times: pd.DatetimeIndex) -> pd.Series:
     sun_el = sun["elevation"].to_numpy()
     sun_az = sun["azimuth"].to_numpy()
 
-    normal = _unit_vectors(
-        np.array([face.normal_elevation]), np.array([face.aspect])
-    )  # (3, 1)
+    normal = _unit_vectors(np.array([face.normal_elevation]), np.array([face.aspect]))  # (3, 1)
     sun_vec = _unit_vectors(sun_el, sun_az)  # (3, N)
 
     cos_aoi = (normal * sun_vec).sum(axis=0)  # (N,)

@@ -19,8 +19,8 @@ DEEP_WINDOW_HOURS = 24 * 120
 
 @dataclass(frozen=True)
 class ThermalParams:
-    thermal_mass: float   # J/(m^2 K), = rho * c * effective_depth
-    absorptivity: float   # 0-1, shortwave absorbed fraction
+    thermal_mass: float  # J/(m^2 K), = rho * c * effective_depth
+    absorptivity: float  # 0-1, shortwave absorbed fraction
     deep_conductance: float = DEEP_CONDUCTANCE  # W/(m^2 K) to interior rock
 
 
@@ -66,9 +66,13 @@ def net_flux(
 
     solar = params.absorptivity * (dni * beam_factor + diffuse * sky_view)
     convection = convective_coefficient(wind) * (temp_air - rock_temp_c)
-    longwave = EMISSIVITY * STEFAN_BOLTZMANN * (
-        sky_view * (t_sky_k**4 - t_rock_k**4)
-        + (1.0 - sky_view) * (t_air_k**4 - t_rock_k**4)  # ground hemisphere ~ air temp
+    longwave = (
+        EMISSIVITY
+        * STEFAN_BOLTZMANN
+        * (
+            sky_view * (t_sky_k**4 - t_rock_k**4)
+            + (1.0 - sky_view) * (t_air_k**4 - t_rock_k**4)  # ground hemisphere ~ air temp
+        )
     )
     deep = 0.0 if temp_deep is None else params.deep_conductance * (temp_deep - rock_temp_c)
     return solar + convection + longwave + deep
@@ -121,8 +125,11 @@ def integrate(
     }
 
     substeps = _required_substeps(
-        params.thermal_mass, float(np.nanmax(forcing["wind"])), params.deep_conductance,
-        hour_seconds, substeps,
+        params.thermal_mass,
+        float(np.nanmax(forcing["wind"])),
+        params.deep_conductance,
+        hour_seconds,
+        substeps,
     )
     sub_dt = hour_seconds / substeps
 

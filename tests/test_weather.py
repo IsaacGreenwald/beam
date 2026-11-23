@@ -73,9 +73,9 @@ def test_parse_hourly_shapes_and_utc():
 @pytest.mark.parametrize(
     "temp, rh, expected",
     [
-        (20.0, 50.0, 9.3),   # standard reference
+        (20.0, 50.0, 9.3),  # standard reference
         (25.0, 100.0, 25.0),  # saturated air: dew point == temperature
-        (30.0, 20.0, 4.6),   # hot and dry: dew point well below air
+        (30.0, 20.0, 4.6),  # hot and dry: dew point well below air
     ],
 )
 def test_dew_point_known_values(temp, rh, expected):

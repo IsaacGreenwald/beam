@@ -16,7 +16,7 @@ def _synthetic_weather(days=10):
     hour = idx.hour.to_numpy()
     return pd.DataFrame(
         {
-            "dni": np.full(len(idx), 900.0),      # gated by beam_factor
+            "dni": np.full(len(idx), 900.0),  # gated by beam_factor
             "diffuse": np.full(len(idx), 100.0),
             "temp_air": 15.0 + 8.0 * np.sin(2 * np.pi * (hour - 9) / 24),
             "rh": np.full(len(idx), 40.0),
@@ -63,7 +63,7 @@ def test_warm_season_mask_excludes_the_freezing_spell():
     cold = w.index < w.index[0] + pd.Timedelta(days=10)
     w.loc[cold, "temp_air"] = -12.0
     m = warm_season_mask(w)
-    assert not m[cold].any()      # winter half dropped entirely
+    assert not m[cold].any()  # winter half dropped entirely
     assert m[~cold].iloc[12:].all()  # summer kept past the centred window's feathered edge
 
 

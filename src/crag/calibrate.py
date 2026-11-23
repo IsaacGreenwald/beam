@@ -22,9 +22,9 @@ DEFAULT_BOUNDS = ((1.0e4, 0.1, 0.0), (5.0e6, 1.0, 5.0))
 class CalibrationResult:
     params: ThermalParams
     held_out_rmse: float  # daylight-hours RMSE on the held-out window, deg C
-    train_rmse: float     # daylight-hours RMSE on the training window, deg C
-    n_train: int          # scored training rows
-    n_held_out: int       # scored held-out rows
+    train_rmse: float  # daylight-hours RMSE on the training window, deg C
+    n_train: int  # scored training rows
+    n_held_out: int  # scored held-out rows
 
 
 def warm_season_mask(

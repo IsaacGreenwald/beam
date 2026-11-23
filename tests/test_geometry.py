@@ -119,7 +119,11 @@ def test_sun_position_requires_tz_aware():
 
 def test_horizon_interpolation_and_wraparound():
     face = Face(
-        id="wrap", lat=LAT, lon=LON, aspect=180, dip=90,
+        id="wrap",
+        lat=LAT,
+        lon=LON,
+        aspect=180,
+        dip=90,
         horizon=((350.0, 10.0), (10.0, 30.0)),
     )
     # querying due North (0 deg) should blend between the 350 and 10 samples
