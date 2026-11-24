@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from requests_cache.backends import sqlite as requests_cache_sqlite
 
 from crag import weather
 from crag.weather import (
@@ -171,10 +172,13 @@ def test_fetch_archive_trims_edge_gaps(monkeypatch):
     assert np.allclose(df["temp_air"].to_numpy(), [15.0, 16.0, 17.0, 18.0])
 
 
-def test_session_is_cached_singleton():
-    import requests_cache
+def test_session_is_a_singleton_in_the_os_cache_dir(monkeypatch, tmp_path):
+    os_cache, elsewhere = tmp_path / "os-cache", tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setattr(requests_cache_sqlite, "user_cache_dir", lambda: str(os_cache))
+    monkeypatch.setattr(weather, "_session", None)
+    monkeypatch.chdir(elsewhere)
 
     s1 = weather._get_session()
-    s2 = weather._get_session()
-    assert s1 is s2
-    assert isinstance(s1, requests_cache.CachedSession)
+    assert s1 is weather._get_session()
+    assert s1.cache.db_path == os_cache / "crag" / "open_meteo.sqlite"

@@ -4,25 +4,24 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from requests_cache import NEVER_EXPIRE, CachedSession
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
-CACHE_PATH = ".cache/open_meteo"
+CACHE_NAME = "crag/open_meteo"  # under the OS user cache dir
 CACHE_EXPIRE_SECONDS = 3600
 ARCHIVE_STABLE_DAYS = 14  # past this the archive stops revising -> cache forever
-NEVER_EXPIRE = -1  # requests_cache sentinel
 
-_session = None
+_session: CachedSession | None = None
 
 
-def _get_session():
+def _get_session() -> CachedSession:
     global _session
     if _session is None:
-        import requests_cache
-
-        _session = requests_cache.CachedSession(
-            cache_name=CACHE_PATH,
+        _session = CachedSession(
+            cache_name=CACHE_NAME,
             backend="sqlite",
+            use_cache_dir=True,
             expire_after=CACHE_EXPIRE_SECONDS,
         )
     return _session
