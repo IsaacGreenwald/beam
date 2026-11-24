@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass
 
 import numpy as np
 import pandas as pd
@@ -13,9 +13,9 @@ from crag.geometry import beam_factor, sky_view_factor, sun_position
 from crag.thermal import ThermalParams, integrate
 
 DAYLIGHT_WEIGHT = 3.0
-# lo/hi for (thermal_mass, absorptivity, deep_conductance)
-DEFAULT_INITIAL = ThermalParams(3.0e5, 0.6)
-DEFAULT_BOUNDS = ((1.0e4, 0.1, 0.0), (5.0e6, 1.0, 5.0))
+DEFAULT_INITIAL = ThermalParams(thermal_mass=3.0e5, absorptivity=0.6)
+LOWER_BOUNDS = ThermalParams(thermal_mass=1.0e4, absorptivity=0.1, deep_conductance=0.0)
+UPPER_BOUNDS = ThermalParams(thermal_mass=5.0e6, absorptivity=1.0, deep_conductance=5.0)
 
 
 @dataclass(frozen=True)
@@ -23,14 +23,14 @@ class CalibrationResult:
     params: ThermalParams
     held_out_rmse: float  # daylight-hours RMSE on the held-out window, deg C
     train_rmse: float  # daylight-hours RMSE on the training window, deg C
-    n_train: int  # scored training rows
-    n_held_out: int  # scored held-out rows
+    n_train: int  # scored daylight rows in the training window
+    n_held_out: int  # scored daylight rows in the held-out window
 
 
 def warm_season_mask(
     weather: pd.DataFrame, min_daily_mean: float = 2.0, window_hours: int = 24
 ) -> pd.Series:
-    """Hours whose centred daily mean air temp is above freezing (excludes freeze-thaw)."""
+    """Hours whose centred daily mean air temp exceeds min_daily_mean (keeps out freeze-thaw)."""
     daily = weather["temp_air"].rolling(window_hours, center=True, min_periods=1).mean()
     return daily > min_daily_mean
 
@@ -52,7 +52,7 @@ def calibrate(
     *,
     train_frac: float = 0.7,
     initial: ThermalParams = DEFAULT_INITIAL,
-    bounds: tuple[tuple[float, ...], tuple[float, ...]] = DEFAULT_BOUNDS,
+    bounds: tuple[ThermalParams, ThermalParams] = (LOWER_BOUNDS, UPPER_BOUNDS),
     mask: pd.Series | None = None,
     fit_deep: bool = False,
     deep_temp: pd.Series | None = None,
@@ -87,9 +87,8 @@ def calibrate(
     def residuals(x: np.ndarray) -> np.ndarray:
         return (sqrt_w * (predict(x) - observed))[fit_rows]
 
-    lo, hi = bounds
-    x0 = [initial.thermal_mass, initial.absorptivity, initial.deep_conductance][:n_free]
-    fit = least_squares(residuals, x0=x0, bounds=(list(lo[:n_free]), list(hi[:n_free])))
+    lower, upper = (astuple(b)[:n_free] for b in bounds)
+    fit = least_squares(residuals, x0=astuple(initial)[:n_free], bounds=(lower, upper))
 
     pred = predict(fit.x)
     return CalibrationResult(
