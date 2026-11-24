@@ -77,8 +77,7 @@ Each was re-verified with a repro; numbers below are the overseer's.
   Mutants that set the convective coefficient to 0, drop `sky_view` from diffuse, or move the lerp midpoint all pass the full suite.
   Fix: golden `net_flux` components, exact `sky_view_factor(dip=60) == 0.75`, and `integrate` against analytic exponential relaxation.
 - **Pipeline wiring is unpinned.**
-  Mutants that swap `band()` lo for median, drop `deep_temp` in `forecast()`, flip `normal_elevation`'s sign, drop `fetch_model`'s `models` param, or score held-out RMSE on training rows all pass.
-  Every directional test uses dip 90, so slab vs overhang is never checked.
+  Mutants that swap `band()` lo for median, drop `deep_temp` in `forecast()`, drop `fetch_model`'s `models` param, or score held-out RMSE on training rows all pass.
 - **Test hygiene.** Three separate weather-frame builders, re-imports inside tests, a misplaced test in `test_forecast.py`, and some narrative comments.
 
 ### Physics refinements (low)

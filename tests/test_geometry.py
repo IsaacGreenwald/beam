@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pvlib
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -73,13 +75,27 @@ def test_beam_factor_bounded(aspect, dip, hour, month):
     assert np.isfinite(val)
 
 
-def test_empty_horizon_matches_orientation_only():
-    east = Face(id="e-open", lat=LAT, lon=LON, aspect=90, dip=90)
-    east_blocked = east.model_copy(update={"horizon": ()})  # explicitly open
+@pytest.mark.parametrize(
+    ("aspect", "dip"),
+    [(90, 90), (180, 60), (270, 120), (0, 10)],
+    ids=["east-vertical", "south-slab", "west-overhang", "north-near-flat"],
+)
+def test_open_sky_matches_pvlib_angle_of_incidence(aspect, dip):
+    face = Face(id="open", lat=LAT, lon=LON, aspect=aspect, dip=dip)
+    times = pd.date_range("2026-06-21", periods=24 * 6, freq="10min", tz="US/Mountain")
+    solpos = pvlib.solarposition.get_solarposition(times, LAT, LON)
+    aoi = pvlib.irradiance.aoi(dip, aspect, solpos["apparent_zenith"], solpos["azimuth"])
+    cos_aoi = np.cos(np.radians(aoi.to_numpy()))
+    up = solpos["apparent_elevation"].to_numpy() > 0
+    expected = np.where(up & (cos_aoi > 0), cos_aoi, 0.0)
+    assert np.allclose(beam_factor(face, times).to_numpy(), expected, atol=1e-9)
+
+
+def test_empty_horizon_equals_explicit_flat_horizon():
+    open_sky = Face(id="open", lat=LAT, lon=LON, aspect=90, dip=90)
+    flat = open_sky.model_copy(update={"horizon": ((0, 0), (120, 0), (240, 0))})
     times = _day("2026-06-21")
-    assert np.allclose(
-        beam_factor(east, times).to_numpy(), beam_factor(east_blocked, times).to_numpy()
-    )
+    assert np.array_equal(beam_factor(open_sky, times), beam_factor(flat, times))
 
 
 def test_ridge_only_removes_sun_and_removes_some():
@@ -107,10 +123,6 @@ def test_high_skyline_blocks_all_low_sun():
 
 
 def test_sun_position_requires_tz_aware():
-    import pytest
-
-    from crag.geometry import sun_position
-
     face = Face(id="tz", lat=LAT, lon=LON, aspect=180, dip=90)
     naive = pd.date_range("2026-07-20", periods=3, freq="h")  # no tz
     with pytest.raises(ValueError):
