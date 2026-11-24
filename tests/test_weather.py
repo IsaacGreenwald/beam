@@ -135,28 +135,33 @@ def test_fetch_archive_request_shape(monkeypatch):
     assert str(df.index.tz) == "UTC"
 
 
-def test_fetch_archive_caches_settled_ranges_forever(monkeypatch):
-    times = pd.date_range("2016-07-01", periods=3, freq="h").strftime("%Y-%m-%dT%H:%M")
+NOW = pd.Timestamp("2026-03-10 13:20", tz="UTC")
+
+
+@pytest.mark.parametrize(
+    ("end_date", "expire_after"),
+    [
+        ("2016-07-01", weather.NEVER_EXPIRE),
+        ("2026-02-24", weather.NEVER_EXPIRE),  # 14 d 13 h before NOW
+        ("2026-02-25", weather.CACHE_EXPIRE_SECONDS),  # 13 d 13 h before NOW
+        ("2026-03-10", weather.CACHE_EXPIRE_SECONDS),
+    ],
+)
+def test_fetch_archive_caches_only_settled_ranges_forever(monkeypatch, end_date, expire_after):
+    times = pd.date_range(end_date, periods=3, freq="h").strftime("%Y-%m-%dT%H:%M")
     session = _install(monkeypatch, _hourly_block(times))
-
-    fetch_archive(40.0, -105.0, "2016-07-01", "2016-07-01")
-    assert session.calls[0]["expire_after"] == weather.NEVER_EXPIRE
-
-    recent = pd.Timestamp.now(tz="UTC").date().isoformat()
-    fetch_archive(40.0, -105.0, recent, recent)
-    assert session.calls[1]["expire_after"] == weather.CACHE_EXPIRE_SECONDS
+    fetch_archive(40.0, -105.0, end_date, end_date, now=NOW)
+    assert session.calls[0]["expire_after"] == expire_after
 
 
 def test_fetch_archive_drops_forecast_backed_future_hours(monkeypatch):
-    now = pd.Timestamp.now(tz="UTC").floor("h")
-    times = pd.date_range(now - pd.Timedelta(hours=3), periods=8, freq="h")
+    times = pd.date_range("2026-03-10 10:00", periods=8, freq="h")
     session = _install(monkeypatch, _hourly_block(times.strftime("%Y-%m-%dT%H:%M")))
 
-    df = fetch_archive(40.0, -105.0, "2026-01-01", "2026-01-02")
-    assert df.index.max() <= now
-    assert len(df) == 4  # now-3h .. now inclusive
+    df = fetch_archive(40.0, -105.0, "2026-03-10", "2026-03-10", now=NOW)
+    assert list(df.index.hour) == [10, 11, 12, 13]
 
-    kept = fetch_archive(40.0, -105.0, "2026-01-01", "2026-01-02", drop_future=False)
+    kept = fetch_archive(40.0, -105.0, "2026-03-10", "2026-03-10", drop_future=False, now=NOW)
     assert len(kept) == 8
     assert len(session.calls) == 2
 

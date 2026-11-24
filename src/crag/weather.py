@@ -104,10 +104,11 @@ def fetch_archive(
     start_date: str,
     end_date: str,
     drop_future: bool = True,
+    now: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
-    """ERA5-backed hourly history for a location, 1940 to today.
+    """ERA5-backed hourly history for a location, 1940 to `now` (default: the current time).
 
-    drop_future cuts at the current hour: Open-Meteo fills the recent edge with forecasts.
+    drop_future cuts at now's hour: Open-Meteo fills the recent edge with forecasts.
     """
     params = {
         "latitude": lat,
@@ -118,7 +119,7 @@ def fetch_archive(
         "start_date": start_date,
         "end_date": end_date,
     }
-    now = pd.Timestamp.now(tz="UTC")
+    now = pd.Timestamp.now(tz="UTC") if now is None else now
     settled = pd.Timestamp(end_date, tz="UTC") < now - pd.Timedelta(days=ARCHIVE_STABLE_DAYS)
     resp = _get_session().get(
         ARCHIVE_URL,
